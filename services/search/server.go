@@ -105,6 +105,8 @@ func (s *Server) initRateClient(name string) error {
 }
 
 func (s *Server) Nearby(ctx context.Context, req *pb.NearbyRequest) (*pb.SearchResult, error) {
+	log.Printf("received request req=%v", req)
+
 	nearby, err := s.geoClient.Nearby(ctx, &geo.Request{
 		Lat: req.Lat,
 		Lon: req.Lon,
@@ -112,6 +114,7 @@ func (s *Server) Nearby(ctx context.Context, req *pb.NearbyRequest) (*pb.SearchR
 	if err != nil {
 		log.Fatalf("nearby error: %v", err)
 	}
+	log.Printf("get nearby json from geo service: %v", nearby)
 
 	rates, err := s.rateClient.GetRates(ctx, &rate.Request{
 		HotelIds: nearby.HotelIds,
@@ -121,6 +124,7 @@ func (s *Server) Nearby(ctx context.Context, req *pb.NearbyRequest) (*pb.SearchR
 	if err != nil {
 		log.Fatalf("rates error: %v", err)
 	}
+	log.Printf("get rate json from rates service: %v", rates)
 
 	// TODO(hw): add simple ranking algo to order hotel ids:
 	// * geo distance
