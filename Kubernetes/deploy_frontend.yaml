@@ -1,0 +1,42 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: hotel-frontend
+  labels:
+    app: hotel
+    component: frontend
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: hotel
+      component: frontend
+  template:
+    metadata:
+      labels:
+        app: hotel
+        component: frontend
+    spec:
+      containers:
+      - name: hotel-frontend-pod
+        image: registry.cn-beijing.aliyuncs.com/githubauto/hotelrev:v6
+        ports:
+        - name: tcp-port
+          containerPort: 5000
+          protocol: TCP
+        command:
+        - /go/bin/frontend
+        env:
+        - name: serverIP
+          valueFrom:
+            fieldRef:
+              apiVersion: v1
+              fieldPath: status.podIP
+        - name: serverPort
+          value: '5000'
+        - name: consulAddress
+          value: localhost:8500
+        - name: jaegerAddress
+          value: 10.244.2.16:6831
+      imagePullSecrets:
+      - name: litie-reg-secret

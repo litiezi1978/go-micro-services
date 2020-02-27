@@ -1,0 +1,91 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: hotel-geo
+  labels:
+    app: hotel
+    component: geo
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: hotel
+      component: geo
+  template:
+    metadata:
+      labels:
+        app: hotel
+        component: geo
+    spec:
+      containers:
+      - name: hotel-geo-pod
+        image: registry.cn-beijing.aliyuncs.com/githubauto/hotelrev:v6
+        ports:
+        - name: tcp-port
+          containerPort: 8083
+          protocol: TCP
+        command:
+        - /go/bin/geo
+        env:
+        - name: serverIP
+          valueFrom:
+            fieldRef:
+              apiVersion: v1
+              fieldPath: status.podIP
+        - name: serverPort
+          value: '8083'
+        - name: consulAddress
+          value: localhost:8500
+        - name: jaegerAddress
+          value: 10.244.2.16:6831
+        - name: mongoAddr
+          value: 10.100.12.13:27017        
+      imagePullSecrets:
+      - name: litie-reg-secret
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: hotel-geo-mon
+  labels:
+    app: hotel
+    component: geo-mon
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: hotel
+      component: geo-mon
+  template:
+    metadata:
+      labels:
+        app: hotel
+        component: geo-mon
+    spec:
+      containers:
+      - name: hotel-geo-mon
+        image: mongo
+        ports:
+        - name: tcp-port
+          containerPort: 27017
+          protocol: TCP                
+      imagePullSecrets:
+      - name: litie-reg-secret
+---
+apiVersion: core/v1
+kind: Service
+metadata:
+  app: hotel
+  name: geo-mon-service
+spec:
+  type: ClusterIP
+  clusterIP: 10.100.12.13
+  ports:
+  - port: 27017
+    targetPort: 27017
+    protocol: TCP
+  selector:
+    matchLabels:
+      app: hotel
+      component: geo-mon
+                          

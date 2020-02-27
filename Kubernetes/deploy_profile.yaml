@@ -1,0 +1,147 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: hotel-profile
+  labels:
+    app: hotel
+    component: profile
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: hotel
+      component: profile
+  template:
+    metadata:
+      labels:
+        app: hotel
+        component: profile
+    spec:
+      containers:
+      - name: hotel-profile-pod
+        image: registry.cn-beijing.aliyuncs.com/githubauto/hotelrev:v6
+        ports:
+        - name: tcp-port
+          containerPort: 8081
+          protocol: TCP
+        command:
+        - /go/bin/profile
+        env:
+        - name: serverIP
+          valueFrom:
+            fieldRef:
+              apiVersion: v1
+              fieldPath: status.podIP
+        - name: serverPort
+          value: '8081'
+        - name: consulAddr
+          value: 10.244.0.16:8500
+        - name: jaegerAddr
+          value: 10.244.2.16:6831
+        - name: mongoAddr
+          value: 10.100.12.14:27017                  
+      imagePullSecrets:
+      - name: litie-reg-secret
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: hotel-profile-mon
+  labels:
+    app: hotel
+    component: profile-mon
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: hotel
+      component: profile-mon
+  template:
+    metadata:
+      labels:
+        app: hotel
+        component: profile-mon
+    spec:
+      containers:
+      - name: hotel-profile-mon
+        image: mongo
+        ports:
+        - name: tcp-port
+          containerPort: 27017
+          protocol: TCP                
+      imagePullSecrets:
+      - name: litie-reg-secret
+---
+apiVersion: core/v1
+kind: Service
+metadata:
+  app: hotel
+  name: profile-mon-service
+spec:
+  type: ClusterIP
+  clusterIP: 10.100.12.14
+  ports:
+  - port: 27017
+    targetPort: 27017
+    protocol: TCP
+  selector:
+    matchLabels:
+      app: hotel
+      component: profile-mon
+---
+
+
+
+
+
+
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: hotel-profile-memcache
+  labels:
+    app: hotel
+    component: profile-memcache
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: hotel
+      component: profile-memcache
+  template:
+    metadata:
+      labels:
+        app: hotel
+        component: profile-memcache
+    spec:
+      containers:
+      - name: hotel-profile-memcache
+        image: memcached
+        ports:
+        - name: tcp-port
+          containerPort: 11211
+          protocol: TCP
+        env:
+        - name: MEMCACHED_CACHE_SIZE
+          value: "128"
+        - name: MEMCACHED_THREADS
+          value: "2"                  
+      imagePullSecrets:
+      - name: litie-reg-secret
+---
+apiVersion: core/v1
+kind: Service
+metadata:
+  app: hotel
+  name: profile-memcache-service
+spec:
+  type: ClusterIP
+  clusterIP: 10.100.12.15
+  ports:
+  - port: 11211
+    targetPort: 11211
+    protocol: TCP
+  selector:
+    matchLabels:
+      app: hotel
+      component: profile-mon                          
