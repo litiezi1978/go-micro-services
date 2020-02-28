@@ -3,6 +3,8 @@ package search
 import (
 	// "encoding/json"
 	"fmt"
+	otlog "github.com/opentracing/opentracing-go/log"
+
 	// F"io/ioutil"
 	"log"
 	"net"
@@ -106,12 +108,15 @@ func (s *Server) initRateClient(name string) error {
 
 func (s *Server) Nearby(ctx context.Context, req *pb.NearbyRequest) (*pb.SearchResult, error) {
 	log.Printf("received request req=%v", req)
+	span := opentracing.SpanFromContext(ctx)
 
 	nearby, err := s.geoClient.Nearby(ctx, &geo.Request{
 		Lat: req.Lat,
 		Lon: req.Lon,
 	})
 	if err != nil {
+		span.SetTag("error", true)
+		span.LogFields(otlog.Error(err))
 		log.Fatalf("nearby error: %v", err)
 	}
 	log.Printf("get nearby json from geo service: %v", nearby)
@@ -122,6 +127,8 @@ func (s *Server) Nearby(ctx context.Context, req *pb.NearbyRequest) (*pb.SearchR
 		OutDate:  req.OutDate,
 	})
 	if err != nil {
+		span.SetTag("error", true)
+		span.LogFields(otlog.Error(err))
 		log.Fatalf("rates error: %v", err)
 	}
 	log.Printf("get rate json from rates service: %v", rates)

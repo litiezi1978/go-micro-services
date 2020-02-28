@@ -2,6 +2,7 @@ package main
 
 import (
 	"fmt"
+	"github.com/opentracing/opentracing-go"
 	"log"
 	"os"
 
@@ -14,23 +15,25 @@ import (
 
 func main() {
 	serv_ip := os.Getenv("serverIP")
-	serv_port, _ := strconv.Atoi(os.Getenv("serverPort"))
 	jaegerAddr := os.Getenv("jaegerAddr")
 	consulAddr := os.Getenv("consulAddr")
 	consul_check_port, _ := strconv.Atoi(os.Getenv("consulCheckPort"))
 
+	serv_port, _ := strconv.Atoi(os.Getenv("serverPort"))
 	fmt.Printf("search ip = %s, port = %d\n", serv_ip, serv_port)
 
 	fmt.Printf("init distributed tracing with addr: %s\n", jaegerAddr)
-	tracer, err := tracing.Init("search", jaegerAddr)
+	tracer, closer, err := tracing.Init("search", jaegerAddr)
 	if err != nil {
-		panic(err)
+		log.Fatalf("error init Jaeger tracing with err=%v", err)
 	}
+	defer closer.Close()
+	opentracing.SetGlobalTracer(tracer)
 
 	fmt.Printf("init consul with addr: %s\n", consulAddr)
 	registry, err := registry.NewClient(consulAddr)
 	if err != nil {
-		panic(err)
+		log.Fatalf("error init Consul with err=%v", err)
 	}
 
 	srv := &search.Server{
