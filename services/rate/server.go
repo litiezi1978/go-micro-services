@@ -39,18 +39,12 @@ func (s *Server) Run() error {
 	}
 
 	srv := grpc.NewServer(
-		grpc.KeepaliveParams(keepalive.ServerParameters{
-			Timeout: 120 * time.Second,
-		}),
-		grpc.KeepaliveEnforcementPolicy(keepalive.EnforcementPolicy{
-			PermitWithoutStream: true,
-		}),
-		grpc.UnaryInterceptor(
-			otgrpc.OpenTracingServerInterceptor(s.Tracer),
-		),
+		grpc.KeepaliveParams(keepalive.ServerParameters{Timeout: 120 * time.Second}),
+		grpc.KeepaliveEnforcementPolicy(keepalive.EnforcementPolicy{PermitWithoutStream: true}),
+		grpc.UnaryInterceptor(otgrpc.OpenTracingServerInterceptor(s.Tracer)),
 	)
 
-	fmt.Println("register gRPC server")
+	log.Println("register gRPC server")
 	pb.RegisterRateServer(srv, s)
 
 	lis, err := net.Listen("tcp", fmt.Sprintf(":%d", s.Port))
@@ -71,6 +65,9 @@ func (s *Server) Shutdown() {
 }
 
 func (s *Server) GetRates(ctx context.Context, req *pb.Request) (*pb.Result, error) {
+	span := opentracing.SpanFromContext(ctx)
+	span.LogKV("hotelIDs", req.HotelIds, "inDate", req.InDate, "outDate", req.OutDate)
+
 	res := new(pb.Result)
 	ratePlans := make(RatePlans, 0)
 
@@ -81,6 +78,7 @@ func (s *Server) GetRates(ctx context.Context, req *pb.Request) (*pb.Result, err
 			rate_strs := strings.Split(string(item.Value), "\n")
 			fmt.Printf("memc hit, hotelId = %s\n", hotelID)
 			fmt.Println(rate_strs)
+			span.LogKV("rate", rate_strs)
 
 			for _, rate_str := range rate_strs {
 				if len(rate_str) != 0 {
@@ -90,7 +88,6 @@ func (s *Server) GetRates(ctx context.Context, req *pb.Request) (*pb.Result, err
 				}
 			}
 		} else if err == memcache.ErrCacheMiss {
-
 			fmt.Printf("memc miss, hotelId = %s\n", hotelID)
 
 			// memcached miss, set up mongo connection
@@ -103,12 +100,10 @@ func (s *Server) GetRates(ctx context.Context, req *pb.Request) (*pb.Result, err
 			var cursor *mongo.Cursor
 			cursor, err = collection.Find(ctx, bson.M{"hotelId": hotelID})
 			if err != nil {
-				panic(err)
+				log.Fatalf("failed to read inventory table, %v", err)
 			}
 			err = cursor.All(ctx, &tmpRatePlans)
-			if err != nil {
-				panic(err)
-			} else {
+			if len(tmpRatePlans) > 0 {
 				for _, r := range tmpRatePlans {
 					ratePlans = append(ratePlans, r)
 					rate_json, err := json.Marshal(r)
@@ -119,6 +114,7 @@ func (s *Server) GetRates(ctx context.Context, req *pb.Request) (*pb.Result, err
 				}
 			}
 
+			span.LogKV("rates", memc_str)
 			// write to memcached
 			s.MemcClient.Set(&memcache.Item{Key: hotelID, Value: []byte(memc_str)})
 

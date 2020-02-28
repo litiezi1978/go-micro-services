@@ -22,10 +22,11 @@ func main() {
 	log.Printf("geo parameter from env: serverIp=%s, serverPort=%d\n", server_ip, server_port)
 
 	log.Printf("init distributed tracing with addr: %s\n", jaegerAddr)
-	tracer, err := tracing.Init("geo", jaegerAddr)
+	tracer, closer, err := tracing.Init("geo", jaegerAddr)
 	if err != nil {
 		log.Fatalf("failed to init jaeger, with err=%v", err)
 	}
+	defer closer.Close()
 
 	log.Printf("init consul with addr: %s\n", consulAddr)
 	registry, err := registry.NewClient(consulAddr)

@@ -34,8 +34,6 @@ type Server struct {
 }
 
 func (s *Server) Run() error {
-	s.Tracer.StartSpan("Run")
-
 	ctx, err := initializeDatabase(s.MongoAddr)
 	if err != nil {
 		log.Fatalf("init database failed: %v", err)
@@ -50,15 +48,9 @@ func (s *Server) Run() error {
 	}
 
 	srv := grpc.NewServer(
-		grpc.KeepaliveParams(keepalive.ServerParameters{
-			Timeout: 120 * time.Second,
-		}),
-		grpc.KeepaliveEnforcementPolicy(keepalive.EnforcementPolicy{
-			PermitWithoutStream: true,
-		}),
-		grpc.UnaryInterceptor(
-			otgrpc.OpenTracingServerInterceptor(s.Tracer),
-		),
+		grpc.KeepaliveParams(keepalive.ServerParameters{Timeout: 120 * time.Second}),
+		grpc.KeepaliveEnforcementPolicy(keepalive.EnforcementPolicy{PermitWithoutStream: true}),
+		grpc.UnaryInterceptor(otgrpc.OpenTracingServerInterceptor(s.Tracer)),
 	)
 
 	pb.RegisterGeoServer(srv, s)
@@ -82,10 +74,11 @@ func (s *Server) Shutdown() {
 
 func (s *Server) Nearby(ctx context.Context, req *pb.Request) (*pb.Result, error) {
 	log.Printf("In geo Nearby\n")
-	var (
-		points = s.getNearbyPoints(ctx, float64(req.Lat), float64(req.Lon))
-		res    = &pb.Result{}
-	)
+	span := opentracing.SpanFromContext(ctx)
+	span.LogKV("Lon", req.Lon, "Lat", req.Lat)
+
+	points := s.getNearbyPoints(ctx, float64(req.Lat), float64(req.Lon))
+	res := &pb.Result{}
 
 	log.Printf("geo after getNearbyPoints, len = %d\n", len(points))
 	for _, p := range points {
@@ -93,6 +86,7 @@ func (s *Server) Nearby(ctx context.Context, req *pb.Request) (*pb.Result, error
 		res.HotelIds = append(res.HotelIds, p.Id())
 	}
 
+	span.LogKV("RespHotelIds", res.HotelIds)
 	return res, nil
 }
 

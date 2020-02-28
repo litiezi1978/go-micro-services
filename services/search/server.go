@@ -103,7 +103,7 @@ func (s *Server) initRateClient(name string) error {
 func (s *Server) Nearby(ctx context.Context, req *pb.NearbyRequest) (*pb.SearchResult, error) {
 	log.Printf("received request req=%v", req)
 	span := opentracing.SpanFromContext(ctx)
-	span.LogKV("Lat", req.Lat, "Lon", req.Lon)
+	span.LogKV("Nearby_req", *req)
 
 	nearby, err := s.geoClient.Nearby(ctx, &geo.Request{
 		Lat: req.Lat,
@@ -114,6 +114,7 @@ func (s *Server) Nearby(ctx context.Context, req *pb.NearbyRequest) (*pb.SearchR
 		span.LogFields(otlog.Error(err))
 		log.Fatalf("nearby error: %v", err)
 	}
+	span.LogKV("Nearby_resp", nearby.HotelIds)
 	log.Printf("get nearby json from geo service: %v", nearby)
 
 	rates, err := s.rateClient.GetRates(ctx, &rate.Request{

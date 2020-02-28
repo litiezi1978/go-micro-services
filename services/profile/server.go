@@ -37,18 +37,12 @@ func (s *Server) Run() error {
 	}
 
 	srv := grpc.NewServer(
-		grpc.KeepaliveParams(keepalive.ServerParameters{
-			Timeout: 120 * time.Second,
-		}),
-		grpc.KeepaliveEnforcementPolicy(keepalive.EnforcementPolicy{
-			PermitWithoutStream: true,
-		}),
-		grpc.UnaryInterceptor(
-			otgrpc.OpenTracingServerInterceptor(s.Tracer),
-		),
+		grpc.KeepaliveParams(keepalive.ServerParameters{Timeout: 120 * time.Second}),
+		grpc.KeepaliveEnforcementPolicy(keepalive.EnforcementPolicy{PermitWithoutStream: true}),
+		grpc.UnaryInterceptor(otgrpc.OpenTracingServerInterceptor(s.Tracer)),
 	)
 
-	fmt.Printf("register Grpc server\n")
+	log.Printf("register Grpc server\n")
 	pb.RegisterProfileServer(srv, s)
 
 	lis, err := net.Listen("tcp", fmt.Sprintf(":%d", s.Port))
@@ -70,6 +64,10 @@ func (s *Server) Shutdown() {
 }
 
 func (s *Server) GetProfiles(ctx context.Context, req *pb.Request) (*pb.Result, error) {
+	span := opentracing.SpanFromContext(ctx)
+	span.LogKV("HotelIds", req.HotelIds,
+		"locale", req.Locale)
+
 	res := new(pb.Result)
 	hotels := make([]*pb.Hotel, 0)
 
@@ -85,14 +83,11 @@ func (s *Server) GetProfiles(ctx context.Context, req *pb.Request) (*pb.Result, 
 
 		} else if err == memcache.ErrCacheMiss {
 			// memcached miss, set up mongo connection
-
 			hotel_prof := new(pb.Hotel)
 
 			collection := s.MongoClient.Database("profile-db").Collection("hotels")
 			err = collection.FindOne(ctx, bson.M{"id": i}).Decode(&hotel_prof)
-			if err != nil {
-				log.Printf("Seems cannot find document from mongo, err=%v\n", err)
-			} else {
+			if err == nil {
 				hotels = append(hotels, hotel_prof)
 
 				var prof_json []byte

@@ -41,15 +41,9 @@ func (s *Server) Run() error {
 	}
 
 	srv := grpc.NewServer(
-		grpc.KeepaliveParams(keepalive.ServerParameters{
-			Timeout: 120 * time.Second,
-		}),
-		grpc.KeepaliveEnforcementPolicy(keepalive.EnforcementPolicy{
-			PermitWithoutStream: true,
-		}),
-		grpc.UnaryInterceptor(
-			otgrpc.OpenTracingServerInterceptor(s.Tracer),
-		),
+		grpc.KeepaliveParams(keepalive.ServerParameters{Timeout: 120 * time.Second}),
+		grpc.KeepaliveEnforcementPolicy(keepalive.EnforcementPolicy{PermitWithoutStream: true}),
+		grpc.UnaryInterceptor(otgrpc.OpenTracingServerInterceptor(s.Tracer)),
 	)
 
 	pb.RegisterUserServer(srv, s)
@@ -72,6 +66,10 @@ func (s *Server) Shutdown() {
 }
 
 func (s *Server) CheckUser(ctx context.Context, req *pb.Request) (*pb.Result, error) {
+	span := opentracing.SpanFromContext(ctx)
+	span.LogKV("username", req.Username,
+		"password", req.Password)
+
 	res := new(pb.Result)
 
 	sum := sha256.Sum256([]byte(req.Password))
@@ -81,6 +79,7 @@ func (s *Server) CheckUser(ctx context.Context, req *pb.Request) (*pb.Result, er
 	if true_pass, found := s.users[req.Username]; found {
 		res.Correct = pass == true_pass
 	}
+	span.LogKV("checkResult", res.Correct)
 
 	return res, nil
 }

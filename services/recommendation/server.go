@@ -41,15 +41,9 @@ func (s *Server) Run() error {
 	}
 
 	srv := grpc.NewServer(
-		grpc.KeepaliveParams(keepalive.ServerParameters{
-			Timeout: 120 * time.Second,
-		}),
-		grpc.KeepaliveEnforcementPolicy(keepalive.EnforcementPolicy{
-			PermitWithoutStream: true,
-		}),
-		grpc.UnaryInterceptor(
-			otgrpc.OpenTracingServerInterceptor(s.Tracer),
-		),
+		grpc.KeepaliveParams(keepalive.ServerParameters{Timeout: 120 * time.Second}),
+		grpc.KeepaliveEnforcementPolicy(keepalive.EnforcementPolicy{PermitWithoutStream: true}),
+		grpc.UnaryInterceptor(otgrpc.OpenTracingServerInterceptor(s.Tracer)),
 	)
 
 	pb.RegisterRecommendationServer(srv, s)
@@ -72,8 +66,11 @@ func (s *Server) Shutdown() {
 }
 
 func (s *Server) GetRecommendations(ctx context.Context, req *pb.Request) (*pb.Result, error) {
+	span := opentracing.SpanFromContext(ctx)
+	span.LogKV("require", req.Require, "Lat", req.Lat, "Lon", req.Lon)
+
 	res := new(pb.Result)
-	fmt.Printf("GetRecommendations\n")
+	log.Printf("GetRecommendations\n")
 
 	require := req.Require
 	if require == "dis" {

@@ -32,21 +32,22 @@ func main() {
 	memc_client.MaxIdleConns = 512
 
 	fmt.Printf("init distributed tracing with addr: %s\n", jaegerAddr)
-	tracer, err := tracing.Init("profile", jaegerAddr)
+	tracer, closer, err := tracing.Init("profile", jaegerAddr)
 	if err != nil {
-		panic(err)
+		log.Fatalf("failed to init jaeger tracer, err=%v", err)
 	}
+	defer closer.Close()
 
 	fmt.Printf("init consul with addr: %s\n", consulAddr)
 	registry, err := registry.NewClient(consulAddr)
 	if err != nil {
-		panic(err)
+		log.Fatalf("failed to init consul, err=%v", err)
 	}
 
 	fmt.Printf("init mongo DB with addr: %s\n", mongoAddr)
 	mongoClient, err := profile.InitializeDatabase(mongoAddr)
 	if err != nil {
-		panic(err)
+		log.Fatalf("failed to init mongo, err=%v", err)
 	}
 
 	srv := profile.Server{

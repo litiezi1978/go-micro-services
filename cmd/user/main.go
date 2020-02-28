@@ -2,6 +2,7 @@ package main
 
 import (
 	"fmt"
+	"github.com/opentracing/opentracing-go"
 	"log"
 	"os"
 	"strconv"
@@ -12,39 +13,34 @@ import (
 )
 
 func main() {
-	host_ip := os.Getenv("hostIP")
 	serv_ip := os.Getenv("serverIP")
-
 	serv_port, _ := strconv.Atoi(os.Getenv("serverPort"))
-	mongo_port := os.Getenv("mongoPort")
-	jaeger_port := os.Getenv("jaegerPort")
-	consul_port := os.Getenv("consulPort")
+
+	mongoAddr := os.Getenv("mongoAddr")
+	jaegerAddr := os.Getenv("jaegerAddr")
+	consulAddr := os.Getenv("consulAddr")
 	consul_check_port, _ := strconv.Atoi(os.Getenv("consulCheckPort"))
 
 	fmt.Printf("user ip = %s, port = %d\n", serv_ip, serv_port)
 
-	jaegerAddr := fmt.Sprintf("%s:%s", host_ip, jaeger_port)
 	fmt.Printf("init distributed tracing with addr: %s\n", jaegerAddr)
-
-	tracer, err := tracing.Init("user", jaegerAddr)
+	tracer, closer, err := tracing.Init("hotel-user", jaegerAddr)
 	if err != nil {
-		panic(err)
+		log.Fatalf("failed to init jaeger, err=%v", err)
 	}
+	defer closer.Close()
+	opentracing.SetGlobalTracer(tracer)
 
-	consulAddr := fmt.Sprintf("%s:%s", host_ip, consul_port)
 	fmt.Printf("init consul with addr: %s\n", consulAddr)
-
 	registry, err := registry.NewClient(consulAddr)
 	if err != nil {
-		panic(err)
+		log.Fatalf("failed to init consul, err=%v", err)
 	}
 
-	mongoAddr := fmt.Sprintf("%s:%s", host_ip, mongo_port)
 	fmt.Printf("init mongo DB with addr: %s\n", mongoAddr)
-
 	mongoClient, err := user.InitializeDatabase(mongoAddr)
 	if err != nil {
-		panic(err)
+		log.Fatalf("failed to init mongo, err=%v", err)
 	}
 
 	srv := &user.Server{
