@@ -2,14 +2,14 @@ package tracing
 
 import (
 	"fmt"
+	"io"
 	"time"
 
 	opentracing "github.com/opentracing/opentracing-go"
 	"github.com/uber/jaeger-client-go/config"
 )
 
-// Init returns a newly configured tracer
-func Init(serviceName, host string) (opentracing.Tracer, error) {
+func Init(serviceName, host string) (opentracing.Tracer, io.Closer, error) {
 	cfg := config.Configuration{
 		Sampler: &config.SamplerConfig{
 			Type:  "probabilistic",
@@ -22,9 +22,9 @@ func Init(serviceName, host string) (opentracing.Tracer, error) {
 		},
 	}
 
-	tracer, _, err := cfg.New(serviceName)
+	tracer, closer, err := cfg.New(serviceName)
 	if err != nil {
-		return nil, fmt.Errorf("new tracer error: %v", err)
+		return nil, nil, fmt.Errorf("Creating tracer error: %v", err)
 	}
-	return tracer, nil
+	return tracer, closer, nil
 }

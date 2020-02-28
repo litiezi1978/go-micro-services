@@ -34,6 +34,8 @@ type Server struct {
 }
 
 func (s *Server) Run() error {
+	s.Tracer.StartSpan("Run")
+
 	ctx, err := initializeDatabase(s.MongoAddr)
 	if err != nil {
 		log.Fatalf("init database failed: %v", err)

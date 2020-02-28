@@ -3,6 +3,7 @@ package frontend
 import (
 	"encoding/json"
 	"fmt"
+	"log"
 	"net/http"
 	"strconv"
 
@@ -15,9 +16,9 @@ import (
 	userpb "github.com/harlow/go-micro-services/services/user/proto"
 	"github.com/harlow/go-micro-services/tracing"
 	"github.com/opentracing/opentracing-go"
+	otlog "github.com/opentracing/opentracing-go/log"
 )
 
-// Server implements frontend service
 type Server struct {
 	searchClient         searchpb.SearchClient
 	profileClient        profilepb.ProfileClient
@@ -30,7 +31,6 @@ type Server struct {
 	Registry             *registry.Client
 }
 
-// Run the server
 func (s *Server) Run() error {
 	if s.Port == 0 {
 		return fmt.Errorf("server port must be set")
@@ -39,25 +39,20 @@ func (s *Server) Run() error {
 	if err := s.initSearchClient("srv-search"); err != nil {
 		return err
 	}
-
 	if err := s.initProfileClient("srv-profile"); err != nil {
 		return err
 	}
-
 	if err := s.initRecommendationClient("srv-recommendation"); err != nil {
 		return err
 	}
-
 	if err := s.initUserClient("srv-user"); err != nil {
 		return err
 	}
-
 	if err := s.initReservation("srv-reservation"); err != nil {
 		return err
 	}
 
 	fmt.Printf("frontend before mux\n")
-
 	mux := tracing.NewServeMux(s.Tracer)
 	mux.Handle("/", http.FileServer(http.Dir("services/frontend/static")))
 	mux.Handle("/hotels", http.HandlerFunc(s.searchHandler))
@@ -66,7 +61,6 @@ func (s *Server) Run() error {
 	mux.Handle("/reservation", http.HandlerFunc(s.reservationHandler))
 
 	fmt.Printf("frontend starts serving\n")
-
 	return http.ListenAndServe(fmt.Sprintf(":%d", s.Port), mux)
 }
 
@@ -135,23 +129,31 @@ func (s *Server) initReservation(name string) error {
 	return nil
 }
 
-func (s *Server) searchHandler(w http.ResponseWriter, r *http.Request) {
-	w.Header().Set("Access-Control-Allow-Origin", "*")
-	ctx := r.Context()
+func (s *Server) searchHandler(writer http.ResponseWriter, request *http.Request) {
+	log.Printf("starts searchHandler\n")
+	writer.Header().Set("Access-Control-Allow-Origin", "*")
 
-	fmt.Printf("starts searchHandler\n")
+	span := opentracing.GlobalTracer().StartSpan("/hotels")
+	defer span.Finish()
+	ctx := opentracing.ContextWithSpan(request.Context(), span)
 
 	// in/out dates from query params
-	inDate, outDate := r.URL.Query().Get("inDate"), r.URL.Query().Get("outDate")
+	inDate, outDate := request.URL.Query().Get("inDate"), request.URL.Query().Get("outDate")
 	if inDate == "" || outDate == "" {
-		http.Error(w, "Please specify inDate/outDate params", http.StatusBadRequest)
+		span.SetTag("error", true)
+		span.LogKV("inDate", "nil", "outDate", "nil")
+
+		http.Error(writer, "Please specify inDate/outDate params", http.StatusBadRequest)
 		return
 	}
 
 	// lan/lon from query params
-	sLat, sLon := r.URL.Query().Get("lat"), r.URL.Query().Get("lon")
+	sLat, sLon := request.URL.Query().Get("lat"), request.URL.Query().Get("lon")
 	if sLat == "" || sLon == "" {
-		http.Error(w, "Please specify location params", http.StatusBadRequest)
+		span.SetTag("error", true)
+		span.LogKV("sLat", "nil", "sLon", "nil")
+
+		http.Error(writer, "Please specify location params", http.StatusBadRequest)
 		return
 	}
 
@@ -159,6 +161,7 @@ func (s *Server) searchHandler(w http.ResponseWriter, r *http.Request) {
 	lat := float32(Lat)
 	Lon, _ := strconv.ParseFloat(sLon, 32)
 	lon := float32(Lon)
+	span.LogKV("inDate", inDate, "outDate", outDate, "lat", lat, "lon", lon)
 
 	fmt.Printf("starts searchHandler querying downstream\n")
 
@@ -170,7 +173,10 @@ func (s *Server) searchHandler(w http.ResponseWriter, r *http.Request) {
 		OutDate: outDate,
 	})
 	if err != nil {
-		http.Error(w, err.Error(), http.StatusInternalServerError)
+		span.SetTag("error", true)
+		span.LogFields(otlog.Error(err))
+
+		http.Error(writer, err.Error(), http.StatusInternalServerError)
 		return
 	}
 
@@ -180,7 +186,7 @@ func (s *Server) searchHandler(w http.ResponseWriter, r *http.Request) {
 	}
 
 	// grab locale from query params or default to en
-	locale := r.URL.Query().Get("locale")
+	locale := request.URL.Query().Get("locale")
 	if locale == "" {
 		locale = "en"
 	}
@@ -202,22 +208,31 @@ func (s *Server) searchHandler(w http.ResponseWriter, r *http.Request) {
 		Locale:   locale,
 	})
 	if err != nil {
-		http.Error(w, err.Error(), http.StatusInternalServerError)
+		span.SetTag("error", true)
+		span.LogFields(otlog.Error(err))
+
+		http.Error(writer, err.Error(), http.StatusInternalServerError)
 		return
 	}
 
 	fmt.Printf("searchHandler gets profileResp\n")
 
-	json.NewEncoder(w).Encode(geoJSONResponse(profileResp.Hotels))
+	json.NewEncoder(writer).Encode(geoJSONResponse(profileResp.Hotels))
 }
 
-func (s *Server) recommendHandler(w http.ResponseWriter, r *http.Request) {
-	w.Header().Set("Access-Control-Allow-Origin", "*")
-	ctx := r.Context()
+func (s *Server) recommendHandler(writer http.ResponseWriter, request *http.Request) {
+	writer.Header().Set("Access-Control-Allow-Origin", "*")
 
-	sLat, sLon := r.URL.Query().Get("lat"), r.URL.Query().Get("lon")
+	span := opentracing.GlobalTracer().StartSpan("/recommendations")
+	defer span.Finish()
+	ctx := opentracing.ContextWithSpan(request.Context(), span)
+
+	sLat, sLon := request.URL.Query().Get("lat"), request.URL.Query().Get("lon")
 	if sLat == "" || sLon == "" {
-		http.Error(w, "Please specify location params", http.StatusBadRequest)
+		span.SetTag("error", true)
+		span.LogKV("sLat", "nil", "sLon", "nil")
+
+		http.Error(writer, "Please specify location params", http.StatusBadRequest)
 		return
 	}
 	Lat, _ := strconv.ParseFloat(sLat, 64)
@@ -225,9 +240,12 @@ func (s *Server) recommendHandler(w http.ResponseWriter, r *http.Request) {
 	Lon, _ := strconv.ParseFloat(sLon, 64)
 	lon := float64(Lon)
 
-	require := r.URL.Query().Get("require")
+	require := request.URL.Query().Get("require")
 	if require != "dis" && require != "rate" && require != "price" {
-		http.Error(w, "Please specify require params", http.StatusBadRequest)
+		span.SetTag("error", true)
+		span.LogKV("require", require)
+
+		http.Error(writer, "Please specify require params", http.StatusBadRequest)
 		return
 	}
 
@@ -238,12 +256,15 @@ func (s *Server) recommendHandler(w http.ResponseWriter, r *http.Request) {
 		Lon:     float64(lon),
 	})
 	if err != nil {
-		http.Error(w, err.Error(), http.StatusInternalServerError)
+		span.SetTag("error", true)
+		span.LogFields(otlog.Error(err))
+
+		http.Error(writer, err.Error(), http.StatusInternalServerError)
 		return
 	}
 
 	// grab locale from query params or default to en
-	locale := r.URL.Query().Get("locale")
+	locale := request.URL.Query().Get("locale")
 	if locale == "" {
 		locale = "en"
 	}
@@ -254,20 +275,27 @@ func (s *Server) recommendHandler(w http.ResponseWriter, r *http.Request) {
 		Locale:   locale,
 	})
 	if err != nil {
-		http.Error(w, err.Error(), http.StatusInternalServerError)
+		span.SetTag("error", true)
+		span.LogFields(otlog.Error(err))
+		http.Error(writer, err.Error(), http.StatusInternalServerError)
 		return
 	}
 
-	json.NewEncoder(w).Encode(geoJSONResponse(profileResp.Hotels))
+	json_resp := geoJSONResponse(profileResp.Hotels)
+	span.LogKV("response result", json_resp)
+	json.NewEncoder(writer).Encode(json_resp)
 }
 
-func (s *Server) userHandler(w http.ResponseWriter, r *http.Request) {
-	w.Header().Set("Access-Control-Allow-Origin", "*")
-	ctx := r.Context()
+func (s *Server) userHandler(writer http.ResponseWriter, request *http.Request) {
+	writer.Header().Set("Access-Control-Allow-Origin", "*")
 
-	username, password := r.URL.Query().Get("username"), r.URL.Query().Get("password")
+	span := opentracing.GlobalTracer().StartSpan("/users")
+	defer span.Finish()
+	ctx := opentracing.ContextWithSpan(request.Context(), span)
+
+	username, password := request.URL.Query().Get("username"), request.URL.Query().Get("password")
 	if username == "" || password == "" {
-		http.Error(w, "Please specify username and password", http.StatusBadRequest)
+		http.Error(writer, "Please specify username and password", http.StatusBadRequest)
 		return
 	}
 
@@ -277,7 +305,9 @@ func (s *Server) userHandler(w http.ResponseWriter, r *http.Request) {
 		Password: password,
 	})
 	if err != nil {
-		http.Error(w, err.Error(), http.StatusInternalServerError)
+		span.SetTag("error", true)
+		span.LogFields(otlog.Error(err))
+		http.Error(writer, err.Error(), http.StatusInternalServerError)
 		return
 	}
 
@@ -285,49 +315,53 @@ func (s *Server) userHandler(w http.ResponseWriter, r *http.Request) {
 	if recResp.Correct == false {
 		str = "Failed. Please check your username and password. "
 	}
+	span.LogKV("loginResult", str)
 
 	res := map[string]interface{}{
 		"message": str,
 	}
 
-	json.NewEncoder(w).Encode(res)
+	json.NewEncoder(writer).Encode(res)
 }
 
-func (s *Server) reservationHandler(w http.ResponseWriter, r *http.Request) {
-	w.Header().Set("Access-Control-Allow-Origin", "*")
-	ctx := r.Context()
+func (s *Server) reservationHandler(writer http.ResponseWriter, request *http.Request) {
+	writer.Header().Set("Access-Control-Allow-Origin", "*")
 
-	inDate, outDate := r.URL.Query().Get("inDate"), r.URL.Query().Get("outDate")
+	span := opentracing.GlobalTracer().StartSpan("/reservation")
+	defer span.Finish()
+	ctx := opentracing.ContextWithSpan(request.Context(), span)
+
+	inDate, outDate := request.URL.Query().Get("inDate"), request.URL.Query().Get("outDate")
 	if inDate == "" || outDate == "" {
-		http.Error(w, "Please specify inDate/outDate params", http.StatusBadRequest)
+		http.Error(writer, "Please specify inDate/outDate params", http.StatusBadRequest)
 		return
 	}
 
 	if !checkDataFormat(inDate) || !checkDataFormat(outDate) {
-		http.Error(w, "Please check inDate/outDate format (YYYY-MM-DD)", http.StatusBadRequest)
+		http.Error(writer, "Please check inDate/outDate format (YYYY-MM-DD)", http.StatusBadRequest)
 		return
 	}
 
-	hotelId := r.URL.Query().Get("hotelId")
+	hotelId := request.URL.Query().Get("hotelId")
 	if hotelId == "" {
-		http.Error(w, "Please specify hotelId params", http.StatusBadRequest)
+		http.Error(writer, "Please specify hotelId params", http.StatusBadRequest)
 		return
 	}
 
-	customerName := r.URL.Query().Get("customerName")
+	customerName := request.URL.Query().Get("customerName")
 	if customerName == "" {
-		http.Error(w, "Please specify customerName params", http.StatusBadRequest)
+		http.Error(writer, "Please specify customerName params", http.StatusBadRequest)
 		return
 	}
 
-	username, password := r.URL.Query().Get("username"), r.URL.Query().Get("password")
+	username, password := request.URL.Query().Get("username"), request.URL.Query().Get("password")
 	if username == "" || password == "" {
-		http.Error(w, "Please specify username and password", http.StatusBadRequest)
+		http.Error(writer, "Please specify username and password", http.StatusBadRequest)
 		return
 	}
 
 	numberOfRoom := 0
-	num := r.URL.Query().Get("number")
+	num := request.URL.Query().Get("number")
 	if num != "" {
 		numberOfRoom, _ = strconv.Atoi(num)
 	}
@@ -338,7 +372,9 @@ func (s *Server) reservationHandler(w http.ResponseWriter, r *http.Request) {
 		Password: password,
 	})
 	if err != nil {
-		http.Error(w, err.Error(), http.StatusInternalServerError)
+		span.SetTag("error", true)
+		span.LogFields(otlog.Error(err))
+		http.Error(writer, err.Error(), http.StatusInternalServerError)
 		return
 	}
 
@@ -356,7 +392,9 @@ func (s *Server) reservationHandler(w http.ResponseWriter, r *http.Request) {
 		RoomNumber:   int32(numberOfRoom),
 	})
 	if err != nil {
-		http.Error(w, err.Error(), http.StatusInternalServerError)
+		span.SetTag("error", true)
+		span.LogFields(otlog.Error(err))
+		http.Error(writer, err.Error(), http.StatusInternalServerError)
 		return
 	}
 	if len(resResp.HotelId) == 0 {
@@ -367,7 +405,7 @@ func (s *Server) reservationHandler(w http.ResponseWriter, r *http.Request) {
 		"message": str,
 	}
 
-	json.NewEncoder(w).Encode(res)
+	json.NewEncoder(writer).Encode(res)
 }
 
 // return a geoJSON response that allows google map to plot points directly on map

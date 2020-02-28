@@ -1,6 +1,7 @@
 package main
 
 import (
+	"github.com/opentracing/opentracing-go"
 	"log"
 	"os"
 	"strconv"
@@ -12,19 +13,21 @@ import (
 
 func main() {
 	servIp := os.Getenv("serverIP")
-	servPort, err := strconv.Atoi(os.Getenv("serverPort"))
 	jaegerAddr := os.Getenv("jaegerAddr")
 	consulAddr := os.Getenv("consulAddr")
 
+	servPort, err := strconv.Atoi(os.Getenv("serverPort"))
 	if err != nil {
 		log.Fatalf("environment var error, %v", err)
 	}
 
-	log.Printf("init jaeger with %s", jaegerAddr)
-	tracer, err := tracing.Init("frontend", jaegerAddr)
+	log.Printf("Init jaeger with %s", jaegerAddr)
+	tracer, closer, err := tracing.Init("frontend", jaegerAddr)
 	if err != nil {
-		panic(err)
+		log.Fatalf("Cannot init Jaeger tracer, err=%v", err)
 	}
+	defer closer.Close()
+	opentracing.SetGlobalTracer(tracer)
 
 	log.Printf("init consul with %s", consulAddr)
 	registry, err := registry.NewClient(consulAddr)
