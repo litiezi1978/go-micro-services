@@ -43,15 +43,9 @@ func (s *Server) Run() error {
 	}
 
 	srv := grpc.NewServer(
-		grpc.KeepaliveParams(keepalive.ServerParameters{
-			Timeout: 120 * time.Second,
-		}),
-		grpc.KeepaliveEnforcementPolicy(keepalive.EnforcementPolicy{
-			PermitWithoutStream: true,
-		}),
-		grpc.UnaryInterceptor(
-			otgrpc.OpenTracingServerInterceptor(s.Tracer),
-		),
+		grpc.KeepaliveParams(keepalive.ServerParameters{Timeout: 120 * time.Second}),
+		grpc.KeepaliveEnforcementPolicy(keepalive.EnforcementPolicy{PermitWithoutStream: true}),
+		grpc.UnaryInterceptor(otgrpc.OpenTracingServerInterceptor(s.Tracer)),
 	)
 	pb.RegisterSearchServer(srv, s)
 
@@ -109,6 +103,7 @@ func (s *Server) initRateClient(name string) error {
 func (s *Server) Nearby(ctx context.Context, req *pb.NearbyRequest) (*pb.SearchResult, error) {
 	log.Printf("received request req=%v", req)
 	span := opentracing.SpanFromContext(ctx)
+	span.LogKV("Lat", req.Lat, "Lon", req.Lon)
 
 	nearby, err := s.geoClient.Nearby(ctx, &geo.Request{
 		Lat: req.Lat,
