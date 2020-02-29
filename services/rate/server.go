@@ -87,7 +87,7 @@ func (s *Server) GetRates(ctx context.Context, req *pb.Request) (*pb.Result, err
 				}
 			}
 		} else if err == memcache.ErrCacheMiss {
-			fmt.Printf("memc miss, hotelId = %s\n", hotelID)
+			log.Printf("memc miss, hotelId = %s\n", hotelID)
 
 			// memcached miss, set up mongo connection
 			collection := s.MongoClient.Database("rate-db").Collection("inventory")
@@ -107,7 +107,7 @@ func (s *Server) GetRates(ctx context.Context, req *pb.Request) (*pb.Result, err
 					ratePlans = append(ratePlans, r)
 					rate_json, err := json.Marshal(r)
 					if err != nil {
-						fmt.Printf("json.Marshal err = %s\n", err)
+						log.Printf("json.Marshal err = %s\n", err)
 					}
 					memc_str = memc_str + string(rate_json) + "\n"
 				}
@@ -115,8 +115,10 @@ func (s *Server) GetRates(ctx context.Context, req *pb.Request) (*pb.Result, err
 
 			span.LogKV("hotelID", hotelID, "mgo_rates", memc_str)
 			// write to memcached
-			s.MemcClient.Set(&memcache.Item{Key: hotelID, Value: []byte(memc_str)})
-
+			if len(memc_str) > 0 {
+				log.Printf("write to memcached, content=%s\n", memc_str)
+				s.MemcClient.Set(&memcache.Item{Key: hotelID, Value: []byte(memc_str)})
+			}
 		} else {
 			fmt.Printf("Memmcached error = %s\n", err)
 			panic(err)

@@ -34,9 +34,9 @@ func TestGetRates(t *testing.T) {
 	ctx, _ := context.WithCancel(context.Background())
 
 	req := pb.Request{
-		HotelIds: []string{"1", "2"},
-		InDate:   "1999-03-04",
-		OutDate:  "2020-03-04",
+		HotelIds: []string{"68", "71", "69", "28", "42"},
+		InDate:   "2015-01-01",
+		OutDate:  "2016-03-01",
 	}
 
 	var result *pb.Result

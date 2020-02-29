@@ -89,10 +89,13 @@ func InitializeDatabase(url string) (mongoClient *mongo.Client, err error) {
 	for i := 1; i <= 80; i++ {
 		hotel_id := strconv.Itoa(i)
 
-		log.Printf("finding record for hotel with id=%s\n", hotel_id)
-		ratePlan := RatePlan{}
-		err = collection.FindOne(ctx, bson.M{"id": hotel_id}).Decode(&ratePlan)
-		if err == mongo.ErrNoDocuments {
+		mongoRatePlans := make([]RatePlan, 0)
+		cursor, err := collection.Find(ctx, bson.M{"hotelId": hotel_id})
+		if err != nil {
+			log.Fatalf("failed to read mongodb, err=%v", err)
+		}
+		err = cursor.All(ctx, &mongoRatePlans)
+		if (err == mongo.ErrNoDocuments) || len(mongoRatePlans) == 0 {
 			curr_ratePlan := RatePlan{}
 			if i <= 3 {
 				curr_ratePlan = ratePlans[i-1]
