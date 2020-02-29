@@ -44,23 +44,52 @@ type RatePlan struct {
 
 func InitializeDatabase(url string) (mongoClient *mongo.Client, err error) {
 	ratePlans := [3]RatePlan{
-		{"1", "RACK", "2015-04-09", "2015-04-10", &RoomType{109.00, "KNG", "King sized bed", 109.00, 123.17}},
-		{"2", "RACK", "2015-04-09", "2015-04-10", &RoomType{139.00, "QN", "Queen sized bed", 139.00, 153.09}},
-		{"3", "RACK", "2015-04-09", "2015-04-10", &RoomType{109.00, "KNG", "King sized bed", 109.00, 123.17}}}
+		{"1",
+			"RACK",
+			"2015-04-09",
+			"2015-04-10",
+			&RoomType{
+				109.00,
+				"KNG",
+				"King sized bed",
+				109.00,
+				123.17}},
+		{"2",
+			"RACK",
+			"2015-04-09",
+			"2015-04-10",
+			&RoomType{
+				139.00,
+				"QN",
+				"Queen sized bed",
+				139.00,
+				153.09}},
+		{"3",
+			"RACK",
+			"2015-04-09",
+			"2015-04-10",
+			&RoomType{
+				109.00,
+				"KNG",
+				"King sized bed",
+				109.00,
+				123.17}},
+	}
 
-	log.Printf("connect to mongo server\n")
+	log.Printf("connecting to mongo server...\n")
 	ctx, _ := context.WithCancel(context.Background())
 	mongoClient, err = mongo.Connect(ctx, options.Client().ApplyURI("mongodb://"+url))
 	if err != nil {
-		panic(err)
+		log.Fatalf("failed to connect to mongo, err=%v\n", err)
 	}
 
-	log.Printf("read inventory table from rate-db\n")
+	log.Printf("reading inventory table from rate-db...\n")
 	collection := mongoClient.Database("rate-db").Collection("inventory")
 
 	for i := 1; i <= 80; i++ {
 		hotel_id := strconv.Itoa(i)
-		//fmt.Printf("find record for hotel with id=%s\n", hotel_id)
+
+		log.Printf("finding record for hotel with id=%s\n", hotel_id)
 		ratePlan := RatePlan{}
 		err = collection.FindOne(ctx, bson.M{"id": hotel_id}).Decode(&ratePlan)
 		if err == mongo.ErrNoDocuments {
@@ -93,7 +122,13 @@ func InitializeDatabase(url string) (mongoClient *mongo.Client, err error) {
 					"RACK",
 					"2015-04-09",
 					end_date,
-					&RoomType{rate, "KNG", "King sized bed", rate, rate_inc}}
+					&RoomType{
+						rate,
+						"KNG",
+						"King sized bed",
+						rate,
+						rate_inc},
+				}
 			}
 
 			_, err = collection.InsertOne(ctx, &curr_ratePlan)

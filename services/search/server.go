@@ -117,16 +117,20 @@ func (s *Server) Nearby(ctx context.Context, req *pb.NearbyRequest) (*pb.SearchR
 	span.LogKV("Nearby_resp", nearby.HotelIds)
 	log.Printf("get nearby json from geo service: %v", nearby)
 
-	rates, err := s.rateClient.GetRates(ctx, &rate.Request{
+	rateReq := rate.Request{
 		HotelIds: nearby.HotelIds,
 		InDate:   req.InDate,
 		OutDate:  req.OutDate,
-	})
+	}
+	span.LogKV("rateReq", rateReq)
+	log.Printf("send req to rate req=%v", rateReq)
+	rates, err := s.rateClient.GetRates(ctx, &rateReq)
 	if err != nil {
 		span.SetTag("error", true)
 		span.LogFields(otlog.Error(err))
 		log.Fatalf("rates error: %v", err)
 	}
+	span.LogKV("rateResp", rates)
 	log.Printf("get rate json from rates service: %v", rates)
 
 	// TODO(hw): add simple ranking algo to order hotel ids:
@@ -135,10 +139,10 @@ func (s *Server) Nearby(ctx context.Context, req *pb.NearbyRequest) (*pb.SearchR
 	// * reviews
 
 	// build the response
-	res := new(pb.SearchResult)
+	res := pb.SearchResult{}
 	for _, ratePlan := range rates.RatePlans {
 		fmt.Printf("get RatePlan HotelId = %s, Code = %s\n", ratePlan.HotelId, ratePlan.Code)
 		res.HotelIds = append(res.HotelIds, ratePlan.HotelId)
 	}
-	return res, nil
+	return &res, nil
 }

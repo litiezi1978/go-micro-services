@@ -44,7 +44,7 @@ func (s *Server) Run() error {
 		grpc.UnaryInterceptor(otgrpc.OpenTracingServerInterceptor(s.Tracer)),
 	)
 
-	log.Println("register gRPC server")
+	log.Println("registering gRPC server...")
 	pb.RegisterRateServer(srv, s)
 
 	lis, err := net.Listen("tcp", fmt.Sprintf(":%d", s.Port))
@@ -76,9 +76,8 @@ func (s *Server) GetRates(ctx context.Context, req *pb.Request) (*pb.Result, err
 		if err == nil {
 			// memcached hit
 			rate_strs := strings.Split(string(item.Value), "\n")
-			fmt.Printf("memc hit, hotelId = %s\n", hotelID)
-			fmt.Println(rate_strs)
-			span.LogKV("rate", rate_strs)
+			log.Printf("memc hit, hotelId = %s, rate=%s\n", hotelID, rate_strs)
+			span.LogKV("hotelId", hotelID, "memc_rate", rate_strs)
 
 			for _, rate_str := range rate_strs {
 				if len(rate_str) != 0 {
@@ -114,7 +113,7 @@ func (s *Server) GetRates(ctx context.Context, req *pb.Request) (*pb.Result, err
 				}
 			}
 
-			span.LogKV("rates", memc_str)
+			span.LogKV("hotelID", hotelID, "mgo_rates", memc_str)
 			// write to memcached
 			s.MemcClient.Set(&memcache.Item{Key: hotelID, Value: []byte(memc_str)})
 
