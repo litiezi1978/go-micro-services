@@ -3,8 +3,10 @@ package rate
 import (
 	"context"
 	"fmt"
+	"go.mongodb.org/mongo-driver/mongo/readpref"
 	"log"
 	"strconv"
+	"time"
 
 	pb "github.com/harlow/go-micro-services/services/rate/proto"
 	"go.mongodb.org/mongo-driver/bson"
@@ -77,10 +79,14 @@ func InitializeDatabase(url string) (mongoClient *mongo.Client, err error) {
 	}
 
 	log.Printf("connecting to mongo server...\n")
-	ctx, _ := context.WithCancel(context.Background())
+	ctx, _ := context.WithTimeout(context.Background(), 10*time.Second)
 	mongoClient, err = mongo.Connect(ctx, options.Client().ApplyURI("mongodb://"+url))
 	if err != nil {
 		log.Fatalf("failed to connect to mongo, err=%v\n", err)
+	}
+	err = mongoClient.Ping(ctx, readpref.Primary())
+	if err != nil {
+		log.Fatalf("failed to connect to mongo err=%v\n", err)
 	}
 
 	log.Printf("reading inventory table from rate-db...\n")
