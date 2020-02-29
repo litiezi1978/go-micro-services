@@ -75,8 +75,8 @@ func (s *Server) Shutdown() {
 
 func (s *Server) Nearby(ctx context.Context, req *pb.Request) (*pb.Result, error) {
 	log.Printf("In geo Nearby\n")
-	//span := opentracing.SpanFromContext(ctx)
-	//span.LogKV("Lon", req.Lon, "Lat", req.Lat)
+	span := opentracing.SpanFromContext(ctx)
+	span.LogKV("Lon", req.Lon, "Lat", req.Lat)
 	lat, _ := strconv.ParseFloat(fmt.Sprintf("%.4f", req.Lat), 64)
 	lon, _ := strconv.ParseFloat(fmt.Sprintf("%.4f", req.Lon), 64)
 
@@ -89,7 +89,7 @@ func (s *Server) Nearby(ctx context.Context, req *pb.Request) (*pb.Result, error
 		res.HotelIds = append(res.HotelIds, p.Id())
 	}
 
-	//span.LogKV("RespHotelIds", res.HotelIds)
+	span.LogKV("RespHotelIds", res.HotelIds)
 	return res, nil
 }
 

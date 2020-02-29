@@ -3,6 +3,7 @@ package registry
 import (
 	"fmt"
 	"io"
+	"log"
 	"net/http"
 	"strconv"
 
@@ -53,6 +54,7 @@ func (c *Client) Deregister(id string) error {
 func startPingService(check_port int) {
 	http.HandleFunc("/ping", pingHandler)
 
+	log.Printf("start consul check server at port=%d", check_port)
 	err := http.ListenAndServe(":"+strconv.Itoa(check_port), nil)
 	if err != nil {
 		fmt.Errorf("error:", err)
