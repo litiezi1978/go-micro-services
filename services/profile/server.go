@@ -42,7 +42,7 @@ func (s *Server) Run() error {
 		grpc.UnaryInterceptor(otgrpc.OpenTracingServerInterceptor(s.Tracer)),
 	)
 
-	log.Printf("register Grpc server\n")
+	log.Printf("registering Grpc server with name=%s\n", name)
 	pb.RegisterProfileServer(srv, s)
 
 	lis, err := net.Listen("tcp", fmt.Sprintf(":%d", s.Port))
@@ -50,10 +50,10 @@ func (s *Server) Run() error {
 		log.Fatalf("failed to listen: %v", err)
 	}
 
-	fmt.Printf("register Consul server\n")
+	log.Printf("registering Consul server\n")
 	err = s.Registry.Register(name, s.IpAddr, s.Port, s.RegCheckPort)
 	if err != nil {
-		return fmt.Errorf("failed register: %v", err)
+		log.Fatalf("failed register: %v", err)
 	}
 
 	return srv.Serve(lis)
@@ -65,13 +65,11 @@ func (s *Server) Shutdown() {
 
 func (s *Server) GetProfiles(ctx context.Context, req *pb.Request) (*pb.Result, error) {
 	span := opentracing.SpanFromContext(ctx)
-	span.LogKV("HotelIds", req.HotelIds,
-		"locale", req.Locale)
+	span.LogKV("HotelIds", req.HotelIds, "locale", req.Locale)
 
 	res := new(pb.Result)
 	hotels := make([]*pb.Hotel, 0)
 
-	// one hotel should only have one profile
 	for _, i := range req.HotelIds {
 		item, err := s.MemcClient.Get(i)
 		if err == nil {
@@ -81,7 +79,7 @@ func (s *Server) GetProfiles(ctx context.Context, req *pb.Request) (*pb.Result, 
 			json.Unmarshal(item.Value, hotel_prof)
 			hotels = append(hotels, hotel_prof)
 
-		} else if err == memcache.ErrCacheMiss {
+		} else {
 			// memcached miss, set up mongo connection
 			hotel_prof := new(pb.Hotel)
 
@@ -93,13 +91,8 @@ func (s *Server) GetProfiles(ctx context.Context, req *pb.Request) (*pb.Result, 
 				var prof_json []byte
 				prof_json, err = json.Marshal(hotel_prof)
 				memc_str := string(prof_json)
-
-				// write to memcached
 				s.MemcClient.Set(&memcache.Item{Key: i, Value: []byte(memc_str)})
 			}
-		} else {
-			log.Printf("Memmcached error = %s\n", err)
-			return nil, err
 		}
 	}
 

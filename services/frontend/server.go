@@ -24,7 +24,7 @@ type Server struct {
 	profileClient        profilepb.ProfileClient
 	recommendationClient recommpb.RecommendationClient
 	userClient           userpb.UserClient
-	reservationClient    reservepb.ReservationClient
+	ReservationClient    reservepb.ReservationClient
 	IpAddr               string
 	Port                 int
 	Tracer               opentracing.Tracer
@@ -36,26 +36,26 @@ func (s *Server) Run() error {
 		return fmt.Errorf("server port must be set")
 	}
 
-	if err := s.initSearchClient("srv-search"); err != nil {
+	if err := s.InitSearchClient("srv-search"); err != nil {
 		return err
 	}
-	if err := s.initProfileClient("srv-profile"); err != nil {
+	if err := s.InitProfileClient("srv-profile"); err != nil {
 		return err
 	}
-	if err := s.initRecommendationClient("srv-recommendation"); err != nil {
+	if err := s.InitRecommendationClient("srv-recommendation"); err != nil {
 		return err
 	}
-	if err := s.initUserClient("srv-user"); err != nil {
+	if err := s.InitUserClient("srv-user"); err != nil {
 		return err
 	}
-	if err := s.initReservation("srv-reservation"); err != nil {
+	if err := s.InitReservation("srv-reservation"); err != nil {
 		return err
 	}
 
 	fmt.Printf("frontend before mux\n")
 	mux := tracing.NewServeMux(s.Tracer)
 	mux.Handle("/", http.FileServer(http.Dir("services/frontend/static")))
-	mux.Handle("/hotels", http.HandlerFunc(s.searchHandler))
+	mux.Handle("/hotels", http.HandlerFunc(s.SearchHandler))
 	mux.Handle("/recommendations", http.HandlerFunc(s.recommendHandler))
 	mux.Handle("/user", http.HandlerFunc(s.userHandler))
 	mux.Handle("/reservation", http.HandlerFunc(s.reservationHandler))
@@ -64,7 +64,7 @@ func (s *Server) Run() error {
 	return http.ListenAndServe(fmt.Sprintf(":%d", s.Port), mux)
 }
 
-func (s *Server) initSearchClient(name string) error {
+func (s *Server) InitSearchClient(name string) error {
 	conn, err := dialer.Dial(
 		name,
 		dialer.WithTracer(s.Tracer),
@@ -77,7 +77,7 @@ func (s *Server) initSearchClient(name string) error {
 	return nil
 }
 
-func (s *Server) initProfileClient(name string) error {
+func (s *Server) InitProfileClient(name string) error {
 	conn, err := dialer.Dial(
 		name,
 		dialer.WithTracer(s.Tracer),
@@ -90,7 +90,7 @@ func (s *Server) initProfileClient(name string) error {
 	return nil
 }
 
-func (s *Server) initRecommendationClient(name string) error {
+func (s *Server) InitRecommendationClient(name string) error {
 	conn, err := dialer.Dial(
 		name,
 		dialer.WithTracer(s.Tracer),
@@ -103,7 +103,7 @@ func (s *Server) initRecommendationClient(name string) error {
 	return nil
 }
 
-func (s *Server) initUserClient(name string) error {
+func (s *Server) InitUserClient(name string) error {
 	conn, err := dialer.Dial(
 		name,
 		dialer.WithTracer(s.Tracer),
@@ -116,7 +116,7 @@ func (s *Server) initUserClient(name string) error {
 	return nil
 }
 
-func (s *Server) initReservation(name string) error {
+func (s *Server) InitReservation(name string) error {
 	conn, err := dialer.Dial(
 		name,
 		dialer.WithTracer(s.Tracer),
@@ -125,12 +125,12 @@ func (s *Server) initReservation(name string) error {
 	if err != nil {
 		return fmt.Errorf("dialer error: %v", err)
 	}
-	s.reservationClient = reservepb.NewReservationClient(conn)
+	s.ReservationClient = reservepb.NewReservationClient(conn)
 	return nil
 }
 
-func (s *Server) searchHandler(writer http.ResponseWriter, request *http.Request) {
-	log.Printf("starts searchHandler\n")
+func (s *Server) SearchHandler(writer http.ResponseWriter, request *http.Request) {
+	log.Printf("starts SearchHandler\n")
 	writer.Header().Set("Access-Control-Allow-Origin", "*")
 
 	span := opentracing.GlobalTracer().StartSpan("/hotels")
@@ -156,7 +156,7 @@ func (s *Server) searchHandler(writer http.ResponseWriter, request *http.Request
 		OutDate: outDate,
 	}
 	span.LogKV("nearByReq", nearbyReq)
-	log.Printf("starts searchHandler querying downstream with req=%v\n", nearbyReq)
+	log.Printf("starts SearchHandler querying downstream with req=%v\n", nearbyReq)
 	searchResp, err := s.searchClient.Nearby(ctx, &nearbyReq)
 	if err != nil {
 		span.SetTag("error", true)
@@ -166,7 +166,7 @@ func (s *Server) searchHandler(writer http.ResponseWriter, request *http.Request
 		return
 	}
 	span.LogKV("nearByResp", searchResp.HotelIds)
-	log.Printf("searchHandler received searchResp: %v", searchResp.HotelIds)
+	log.Printf("SearchHandler received searchResp: %v", searchResp.HotelIds)
 
 	//第二步，调用reserve checkAvailability
 	reservReq := reservepb.Request{
@@ -178,7 +178,7 @@ func (s *Server) searchHandler(writer http.ResponseWriter, request *http.Request
 	}
 	span.LogKV("ReserveReq", reservReq)
 	log.Printf("call reservation client with req=%v\n", reservReq)
-	reservationResp, err := s.reservationClient.CheckAvailability(ctx, &reservReq)
+	reservationResp, err := s.ReservationClient.CheckAvailability(ctx, &reservReq)
 	if err != nil {
 		span.SetTag("error", true)
 		span.LogFields(otlog.Error(err))
@@ -187,7 +187,7 @@ func (s *Server) searchHandler(writer http.ResponseWriter, request *http.Request
 		return
 	}
 	span.LogKV("ReservResp", reservationResp.HotelId)
-	log.Printf("searchHandler gets reserveResp.HotelId = %s\n", reservationResp.HotelId)
+	log.Printf("SearchHandler gets reserveResp.HotelId = %s\n", reservationResp.HotelId)
 
 	//第三步，profile
 	locale := request.URL.Query().Get("locale")
@@ -209,7 +209,7 @@ func (s *Server) searchHandler(writer http.ResponseWriter, request *http.Request
 		return
 	}
 	span.LogKV("profile response: %v", profileResp.Hotels)
-	log.Printf("searchHandler gets profileResp %v\n", profileResp.Hotels)
+	log.Printf("SearchHandler gets profileResp %v\n", profileResp.Hotels)
 
 	json.NewEncoder(writer).Encode(geoJSONResponse(profileResp.Hotels))
 }
@@ -378,7 +378,7 @@ func (s *Server) reservationHandler(writer http.ResponseWriter, request *http.Re
 	}
 
 	// Make reservation
-	resResp, err := s.reservationClient.MakeReservation(ctx, &reservepb.Request{
+	resResp, err := s.ReservationClient.MakeReservation(ctx, &reservepb.Request{
 		CustomerName: customerName,
 		HotelId:      []string{hotelId},
 		InDate:       inDate,
