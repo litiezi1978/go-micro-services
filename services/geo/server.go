@@ -3,11 +3,12 @@ package geo
 import (
 	"fmt"
 	"log"
+	"math/rand"
 	"net"
+	"strconv"
 	"time"
 
 	"github.com/grpc-ecosystem/grpc-opentracing/go/otgrpc"
-	"github.com/hailocab/go-geoindex"
 	"github.com/harlow/go-micro-services/registry"
 	pb "github.com/harlow/go-micro-services/services/geo/proto"
 	opentracing "github.com/opentracing/opentracing-go"
@@ -23,7 +24,7 @@ const (
 )
 
 type Server struct {
-	index        *geoindex.ClusteringIndex
+	index        []point
 	uuid         string
 	Registry     *registry.Client
 	Tracer       opentracing.Tracer
@@ -74,36 +75,30 @@ func (s *Server) Shutdown() {
 
 func (s *Server) Nearby(ctx context.Context, req *pb.Request) (*pb.Result, error) {
 	log.Printf("In geo Nearby\n")
-	span := opentracing.SpanFromContext(ctx)
-	span.LogKV("Lon", req.Lon, "Lat", req.Lat)
+	//span := opentracing.SpanFromContext(ctx)
+	//span.LogKV("Lon", req.Lon, "Lat", req.Lat)
+	lat, _ := strconv.ParseFloat(fmt.Sprintf("%.4f", req.Lat), 64)
+	lon, _ := strconv.ParseFloat(fmt.Sprintf("%.4f", req.Lon), 64)
 
-	points := s.getNearbyPoints(ctx, float64(req.Lat), float64(req.Lon))
-	res := &pb.Result{}
-
+	points := s.getNearbyPoints(ctx, lat, lon)
 	log.Printf("geo after getNearbyPoints, len = %d\n", len(points))
+
+	res := &pb.Result{}
 	for _, p := range points {
 		log.Printf("In geo Nearby return hotelId = %s\n", p.Id())
 		res.HotelIds = append(res.HotelIds, p.Id())
 	}
 
-	span.LogKV("RespHotelIds", res.HotelIds)
+	//span.LogKV("RespHotelIds", res.HotelIds)
 	return res, nil
 }
 
-func (s *Server) getNearbyPoints(ctx context.Context, lat, lon float64) []geoindex.Point {
+func (s *Server) getNearbyPoints(ctx context.Context, lat, lon float64) []point {
 	log.Printf("In geo getNearbyPoints, lat = %f, lon = %f\n", lat, lon)
-
-	center := &geoindex.GeoPoint{
-		Pid:  "",
-		Plat: lat,
-		Plon: lon,
+	result := make([]point, 0)
+	for i := 0; i < 5; i++ {
+		idx := rand.Intn(79)
+		result = append(result, s.index[idx])
 	}
-
-	return s.index.KNearest(
-		center,
-		maxSearchResults,
-		geoindex.Km(maxSearchRadius), func(p geoindex.Point) bool {
-			return true
-		},
-	)
+	return result
 }

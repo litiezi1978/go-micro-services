@@ -6,7 +6,6 @@ import (
 	"log"
 	"strconv"
 
-	"github.com/hailocab/go-geoindex"
 	"go.mongodb.org/mongo-driver/bson"
 	"go.mongodb.org/mongo-driver/mongo"
 	"go.mongodb.org/mongo-driver/mongo/options"
@@ -58,10 +57,15 @@ func initializeDatabase(url string) (*mongo.Client, error) {
 			if i < 7 {
 				curr_point = points[i-1]
 			} else {
+				lat := 37.7835 + float64(i)/500.0*3.7
+				lat, _ = strconv.ParseFloat(fmt.Sprintf("%.4f", lat), 64)
+				lon := -122.4102 + float64(i)/500.0*4.2
+				lon, _ = strconv.ParseFloat(fmt.Sprintf("%.4f", lon), 64)
+
 				curr_point = point{
 					Pid:  hotel_id,
-					Plat: 37.7835 + float64(i)/500.0*3,
-					Plon: -122.41 + float64(i)/500.0*4,
+					Plat: lat,
+					Plon: lon,
 				}
 			}
 
@@ -75,8 +79,8 @@ func initializeDatabase(url string) (*mongo.Client, error) {
 	return mongoClient, err
 }
 
-func NewGeoIndex(mongoClient *mongo.Client) *geoindex.ClusteringIndex {
-	var points []point = make([]point, 0)
+func NewGeoIndex(mongoClient *mongo.Client) []point {
+	points := make([]point, 80)
 
 	ctx, _ := context.WithCancel(context.Background())
 	collection := mongoClient.Database("geo-db").Collection("geo")
@@ -88,14 +92,6 @@ func NewGeoIndex(mongoClient *mongo.Client) *geoindex.ClusteringIndex {
 	if err != nil {
 		log.Fatalf("failed to read cursor from mongo, with err=%v", err)
 	}
-
-	fmt.Printf("newGeoIndex len(points) = %d\n", len(points))
-
-	// add points to index
-	index := geoindex.NewClusteringIndex()
-	for _, curr_point := range points {
-		index.Add(&curr_point)
-	}
-
-	return index
+	log.Printf("newGeoIndex points = %v\n", points)
+	return points
 }
