@@ -137,41 +137,27 @@ func (s *Server) searchHandler(writer http.ResponseWriter, request *http.Request
 	defer span.Finish()
 	ctx := opentracing.ContextWithSpan(request.Context(), span)
 
-	// in/out dates from query params
+	//第一步，调用nearby
 	inDate, outDate := request.URL.Query().Get("inDate"), request.URL.Query().Get("outDate")
-	if inDate == "" || outDate == "" {
-		span.SetTag("error", true)
-		span.LogKV("inDate", "nil", "outDate", "nil")
-
+	sLat, sLon := request.URL.Query().Get("lat"), request.URL.Query().Get("lon")
+	if inDate == "" || outDate == "" || sLat == "" || sLon == "" {
 		http.Error(writer, "Please specify inDate/outDate params", http.StatusBadRequest)
 		return
 	}
-
-	// lan/lon from query params
-	sLat, sLon := request.URL.Query().Get("lat"), request.URL.Query().Get("lon")
-	if sLat == "" || sLon == "" {
-		span.SetTag("error", true)
-		span.LogKV("sLat", "nil", "sLon", "nil")
-
-		http.Error(writer, "Please specify location params", http.StatusBadRequest)
-		return
-	}
-
 	Lat, _ := strconv.ParseFloat(sLat, 32)
 	lat := float32(Lat)
 	Lon, _ := strconv.ParseFloat(sLon, 32)
 	lon := float32(Lon)
-	span.LogKV("inDate", inDate, "outDate", outDate, "lat", lat, "lon", lon)
 
-	fmt.Printf("starts searchHandler querying downstream\n")
-
-	// search for best hotels
-	searchResp, err := s.searchClient.Nearby(ctx, &searchpb.NearbyRequest{
+	nearbyReq := searchpb.NearbyRequest{
 		Lat:     lat,
 		Lon:     lon,
 		InDate:  inDate,
 		OutDate: outDate,
-	})
+	}
+	span.LogKV("nearByReq", nearbyReq)
+	log.Printf("starts searchHandler querying downstream with req=%v\n", nearbyReq)
+	searchResp, err := s.searchClient.Nearby(ctx, &nearbyReq)
 	if err != nil {
 		span.SetTag("error", true)
 		span.LogFields(otlog.Error(err))
@@ -179,34 +165,20 @@ func (s *Server) searchHandler(writer http.ResponseWriter, request *http.Request
 		http.Error(writer, err.Error(), http.StatusInternalServerError)
 		return
 	}
+	span.LogKV("nearByResp", searchResp.HotelIds)
+	log.Printf("searchHandler received searchResp: %v", searchResp.HotelIds)
 
-	fmt.Printf("searchHandler gets searchResp\n")
-	for _, hid := range searchResp.HotelIds {
-		fmt.Printf("search Handler hotelId = %s\n", hid)
-	}
-
-	// grab locale from query params or default to en
-	locale := request.URL.Query().Get("locale")
-	if locale == "" {
-		locale = "en"
-	}
-
-	reservationResp, err := s.reservationClient.CheckAvailability(ctx, &reservepb.Request{
+	//第二步，调用reserve checkAvailability
+	reservReq := reservepb.Request{
 		CustomerName: "",
 		HotelId:      searchResp.HotelIds,
 		InDate:       inDate,
 		OutDate:      outDate,
 		RoomNumber:   1,
-	})
-
-	fmt.Printf("searchHandler gets reserveResp\n")
-	fmt.Printf("searchHandler gets reserveResp.HotelId = %s\n", reservationResp.HotelId)
-
-	// hotel profiles
-	profileResp, err := s.profileClient.GetProfiles(ctx, &profilepb.Request{
-		HotelIds: reservationResp.HotelId,
-		Locale:   locale,
-	})
+	}
+	span.LogKV("ReserveReq", reservReq)
+	log.Printf("call reservation client with req=%v\n", reservReq)
+	reservationResp, err := s.reservationClient.CheckAvailability(ctx, &reservReq)
 	if err != nil {
 		span.SetTag("error", true)
 		span.LogFields(otlog.Error(err))
@@ -214,8 +186,30 @@ func (s *Server) searchHandler(writer http.ResponseWriter, request *http.Request
 		http.Error(writer, err.Error(), http.StatusInternalServerError)
 		return
 	}
+	span.LogKV("ReservResp", reservationResp.HotelId)
+	log.Printf("searchHandler gets reserveResp.HotelId = %s\n", reservationResp.HotelId)
 
-	fmt.Printf("searchHandler gets profileResp\n")
+	//第三步，profile
+	locale := request.URL.Query().Get("locale")
+	if locale == "" {
+		locale = "en"
+	}
+	profileReq := profilepb.Request{
+		HotelIds: reservationResp.HotelId,
+		Locale:   locale,
+	}
+	span.LogKV("ProfileReq", profileReq)
+	log.Printf("call profile with req=%v\n", profileReq)
+	profileResp, err := s.profileClient.GetProfiles(ctx, &profileReq)
+	if err != nil {
+		span.SetTag("error", true)
+		span.LogFields(otlog.Error(err))
+
+		http.Error(writer, err.Error(), http.StatusInternalServerError)
+		return
+	}
+	span.LogKV("profile response: %v", profileResp.Hotels)
+	log.Printf("searchHandler gets profileResp %v\n", profileResp.Hotels)
 
 	json.NewEncoder(writer).Encode(geoJSONResponse(profileResp.Hotels))
 }
