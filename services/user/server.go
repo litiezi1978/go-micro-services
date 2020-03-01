@@ -1,7 +1,6 @@
 package user
 
 import (
-	"crypto/sha256"
 	"fmt"
 	"log"
 	"net"
@@ -72,8 +71,9 @@ func (s *Server) CheckUser(ctx context.Context, req *pb.Request) (*pb.Result, er
 
 	res := new(pb.Result)
 
-	sum := sha256.Sum256([]byte(req.Password))
-	pass := fmt.Sprintf("%x", sum)
+	//sum := sha256.Sum256([]byte(req.Password))
+	//pass := fmt.Sprintf("%x", sum)
+	pass := req.Password
 
 	res.Correct = false
 	if true_pass, found := s.users[req.Username]; found {
