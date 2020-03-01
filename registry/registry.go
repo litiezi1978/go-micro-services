@@ -31,7 +31,7 @@ func (c *Client) Register(name string, ip string, port int, check_port int) erro
 	checkAddr := fmt.Sprintf("http://%s:%d/ping", ip, check_port)
 
 	reg := new(api.AgentServiceRegistration)
-	reg.ID = name
+	reg.ID = name + "-" + ip
 	reg.Name = name
 	reg.Port = port
 	reg.Address = ip
