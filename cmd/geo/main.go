@@ -11,16 +11,21 @@ import (
 )
 
 func main() {
+	host_ip := os.Getenv("hostIP")
 	server_ip := os.Getenv("serverIP")
 	server_port, _ := strconv.Atoi(os.Getenv("serverPort"))
 	consul_check_port, _ := strconv.Atoi(os.Getenv("consulCheckPort"))
+	consulPort := os.Getenv("consulPort")
+	jaegerPort := os.Getenv("jaegerPort")
 
-	mongoAddr := os.Getenv("mongoAddr")
-	jaegerAddr := os.Getenv("jaegerAddr")
-	consulAddr := os.Getenv("consulAddr")
+	consulAddr := host_ip + ":" + consulPort
+	log.Printf("init consul with addr: %s\n", consulAddr)
+	registry, err := registry.NewClient(consulAddr)
+	if err != nil {
+		log.Fatalf("failed to init Consul, with err=", err)
+	}
 
-	log.Printf("geo parameter from env: serverIp=%s, serverPort=%d\n", server_ip, server_port)
-
+	jaegerAddr := host_ip + ":" + jaegerPort
 	log.Printf("init distributed tracing with addr: %s\n", jaegerAddr)
 	tracer, closer, err := tracing.Init("geo", jaegerAddr)
 	if err != nil {
@@ -28,13 +33,13 @@ func main() {
 	}
 	defer closer.Close()
 
-	log.Printf("init consul with addr: %s\n", consulAddr)
-	registry, err := registry.NewClient(consulAddr)
+	mongoAddr, err := registry.FindService("srv-mongo-rate")
 	if err != nil {
-		log.Fatalf("failed to init Consul, with err=", err)
+		log.Fatalf("failed to search srv-mongo-rate from Consul, %v", err)
 	}
+	log.Printf("init mongo DB with addr: %s\n", mongoAddr)
 
-	log.Printf("init mongo db with addr: %s\n", mongoAddr)
+	log.Printf("geo parameter from env: serverIp=%s, serverPort=%d\n", server_ip, server_port)
 	srv := &geo.Server{
 		Port:         server_port,
 		IpAddr:       server_ip,
