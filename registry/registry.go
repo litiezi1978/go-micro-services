@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"io"
 	"log"
+	"math/rand"
 	"net/http"
 	"strconv"
 
@@ -51,13 +52,34 @@ func (c *Client) Deregister(id string) error {
 	return c.Agent().ServiceDeregister(id)
 }
 
+func (c *Client) FindService(serviceName string) (string, error) {
+	catelog := c.Catalog()
+	queryOptions := api.QueryOptions{}
+	services, _, err := catelog.Service(serviceName, "", &queryOptions)
+	if err != nil {
+		log.Fatalf("error when find service with name=%s, err=%v", serviceName, err)
+	}
+
+	index := rand.Intn(len(services))
+	targetService := services[index].ServiceAddress
+	targetPort := strconv.Itoa(services[index].ServicePort)
+
+	log.Printf("Got %d instances from Consul: ", len(services))
+	for idx, service := range services {
+		log.Printf("#%d: %s", idx, service.ServiceAddress)
+	}
+	log.Printf("And we select: %s\n", targetService)
+
+	return targetService + ":" + targetPort, err
+}
+
 func startPingService(check_port int) {
 	http.HandleFunc("/ping", pingHandler)
 
 	log.Printf("start consul check server at port=%d", check_port)
 	err := http.ListenAndServe(":"+strconv.Itoa(check_port), nil)
 	if err != nil {
-		fmt.Errorf("error:", err)
+		fmt.Errorf("error: %v", err)
 		panic(err)
 	}
 }
