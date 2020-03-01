@@ -2,7 +2,6 @@ package reservation
 
 import (
 	"context"
-	"fmt"
 	"log"
 	"strconv"
 
@@ -25,60 +24,60 @@ type number struct {
 }
 
 func InitializeDatabase(url string) (mongoClient *mongo.Client, err error) {
-	fmt.Printf("connect to mongo server\n")
+	log.Printf("connect to mongo server\n")
 	ctx, _ := context.WithCancel(context.Background())
 	mongoClient, err = mongo.Connect(ctx, options.Client().ApplyURI("mongodb://"+url))
 	if err != nil {
-		panic(err)
+		log.Fatalf("failed to create mongo client pool, error: %v", err)
 	}
 
-	fmt.Printf("read inventory table from rate-db\n")
+	log.Printf("initing room numbers to rate-db\n")
 	db := mongoClient.Database("reservation-db")
 	collection := db.Collection("reservation")
 
-	reservations := make([]reservation, 0)
-
 	cursor, err := collection.Find(ctx, bson.M{"hotelId": "4"})
-	fmt.Errorf("my err is %v", err)
 	if err != nil {
-		panic(err)
+		log.Fatalf("cannot get record from DB, %v", err)
 	}
-	err = cursor.All(ctx, &reservations)
-	fmt.Printf("reservations is %v\n", reservations)
-	if err == mongo.ErrNoDocuments || (err == nil && len(reservations) == 0) {
-		fmt.Println("insert record to reservation table with hotel id=4")
-		reserv := reservation{"4", "Alice", "2015-04-09", "2015-04-10", 1}
-		_, err = collection.InsertOne(ctx, &reserv)
+	tempReserves := make([]reservation, 0)
+	err = cursor.All(ctx, &tempReserves)
+	if err == mongo.ErrNoDocuments || (err == nil && len(tempReserves) == 0) {
+		log.Println("insert record to reservation table with hotel id=4")
+		newReserv := reservation{"4",
+			"Alice",
+			"2015-04-09",
+			"2015-04-10",
+			1}
+		_, err = collection.InsertOne(ctx, &newReserv)
 		if err != nil {
-			log.Fatal(err)
+			log.Fatalf("failed to insert to database, error is: %v", err)
 		}
 	}
 
 	collection = db.Collection("number")
-
 	for i := 1; i <= 80; i++ {
 		hotelId := strconv.Itoa(i)
-
-		var numbers []number
 		cursor, err := collection.Find(ctx, bson.M{"hotelId": hotelId})
 		if err != nil {
-			log.Fatal(err)
+			log.Fatalf("failed to get record from DB when reading tempNumbers table, error is: %v", err)
 		}
-		err = cursor.All(ctx, &numbers)
-		if err == mongo.ErrNoDocuments || (err == nil && len(numbers) == 0) {
-			room_num := 200
+		tempNumbers := make([]number, 0)
+		err = cursor.All(ctx, &tempNumbers)
+		if err == mongo.ErrNoDocuments || (err == nil && len(tempNumbers) == 0) {
+			newRoomNumbers := number{}
+			newRoomNumbers.HotelId = hotelId
+			newRoomNumbers.Number = 200
 			if i >= 7 {
 				if i%3 == 1 {
-					room_num = 300
+					newRoomNumbers.Number = 300
 				} else if i%3 == 2 {
-					room_num = 250
+					newRoomNumbers.Number = 250
 				}
-
 			}
-			fmt.Printf("insert number record with number with %d\n", room_num)
-			_, err = collection.InsertOne(ctx, &number{hotelId, room_num})
+			log.Printf("insert record: %v\n", newRoomNumbers)
+			_, err = collection.InsertOne(ctx, &newRoomNumbers)
 			if err != nil {
-				fmt.Errorf("got error when init db: %v", err)
+				log.Printf("got error when init db: %v", err)
 			}
 		}
 	}

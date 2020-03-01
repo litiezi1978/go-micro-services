@@ -33,22 +33,15 @@ type Server struct {
 
 func (s *Server) Run() error {
 	if s.Port == 0 {
-		return fmt.Errorf("server port must be set")
+		log.Fatal("server port must be set")
 	}
 
-	srv := grpc.NewServer(
-		grpc.KeepaliveParams(keepalive.ServerParameters{
-			Timeout: 120 * time.Second,
-		}),
-		grpc.KeepaliveEnforcementPolicy(keepalive.EnforcementPolicy{
-			PermitWithoutStream: true,
-		}),
-		grpc.UnaryInterceptor(
-			otgrpc.OpenTracingServerInterceptor(s.Tracer),
-		),
+	grpcSrv := grpc.NewServer(
+		grpc.KeepaliveParams(keepalive.ServerParameters{Timeout: 120 * time.Second}),
+		grpc.KeepaliveEnforcementPolicy(keepalive.EnforcementPolicy{PermitWithoutStream: true}),
+		grpc.UnaryInterceptor(otgrpc.OpenTracingServerInterceptor(s.Tracer)),
 	)
-
-	pb.RegisterReservationServer(srv, s)
+	pb.RegisterReservationServer(grpcSrv, s)
 
 	lis, err := net.Listen("tcp", fmt.Sprintf(":%d", s.Port))
 	if err != nil {
@@ -57,10 +50,10 @@ func (s *Server) Run() error {
 
 	err = s.Registry.Register(name, s.IpAddr, s.Port, s.RegCheckPort)
 	if err != nil {
-		return fmt.Errorf("failed register: %v", err)
+		log.Fatalf("failed register: %v", err)
 	}
 
-	return srv.Serve(lis)
+	return grpcSrv.Serve(lis)
 }
 
 func (s *Server) Shutdown() {
@@ -69,8 +62,8 @@ func (s *Server) Shutdown() {
 
 func (s *Server) MakeReservation(ctx context.Context, req *pb.Request) (*pb.Result, error) {
 	db := s.MongoClient.Database("reservation-db")
-	coll_reserve := db.Collection("reservation")
-	coll_number := db.Collection("number")
+	collReserve := db.Collection("reservation")
+	collNumber := db.Collection("number")
 
 	res := new(pb.Result)
 	res.HotelId = make([]string, 0)
@@ -104,7 +97,7 @@ func (s *Server) MakeReservation(ctx context.Context, req *pb.Request) (*pb.Resu
 			fmt.Printf("memcached miss\n")
 
 			reserve := make([]reservation, 0)
-			cursor, err := coll_reserve.Find(ctx, &bson.M{"hotelId": hotelId, "inDate": indate, "outDate": outdate})
+			cursor, err := collReserve.Find(ctx, &bson.M{"hotelId": hotelId, "inDate": indate, "outDate": outdate})
 			if err != nil {
 				panic(err)
 			}
@@ -134,7 +127,7 @@ func (s *Server) MakeReservation(ctx context.Context, req *pb.Request) (*pb.Resu
 			// memcached miss
 			var num number
 
-			err = coll_number.FindOne(ctx, &bson.M{"hotelId": hotelId}).Decode(&num)
+			err = collNumber.FindOne(ctx, &bson.M{"hotelId": hotelId}).Decode(&num)
 			if err == nil {
 				hotel_cap = int(num.Number)
 
@@ -172,7 +165,7 @@ func (s *Server) MakeReservation(ctx context.Context, req *pb.Request) (*pb.Resu
 			OutDate:      outdate,
 			Number:       int(req.RoomNumber)}
 
-		_, err := coll_reserve.InsertOne(ctx, &my_reserv)
+		_, err := collReserve.InsertOne(ctx, &my_reserv)
 		if err != nil {
 			log.Fatalf("insert reserve error: %v", err)
 		}
@@ -192,50 +185,46 @@ func (s *Server) CheckAvailability(ctx context.Context, req *pb.Request) (*pb.Re
 	coll_number := db.Collection("number")
 
 	for _, hotelId := range req.HotelId {
-		fmt.Printf("reservation check hotel %s\n", hotelId)
+		log.Printf("reservation check hotel %s\n", hotelId)
 		inDate, _ := time.Parse(time.RFC3339, req.InDate+"T12:00:00+00:00")
 		outDate, _ := time.Parse(time.RFC3339, req.OutDate+"T12:00:00+00:00")
 
-		indate := inDate.String()[0:10]
+		indateYMD := inDate.String()[0:10]
 
 		for inDate.Before(outDate) {
 			// check reservations
 			count := 0
 			inDate = inDate.AddDate(0, 0, 1)
-			fmt.Printf("reservation check date %s\n", inDate.String()[0:10])
-			outdate := inDate.String()[0:10]
+			log.Printf("reservation check date %s\n", inDate.String()[0:10])
+			outdateYMD := inDate.String()[0:10]
 
 			// first check memc
-			memc_key := hotelId + "_" + inDate.String()[0:10] + "_" + outdate
+			memc_key := hotelId + "_" + inDate.String()[0:10] + "_" + outdateYMD
 			item, err := s.MemcClient.Get(memc_key)
 
 			if err == nil {
 				// memcached hit
 				count, _ = strconv.Atoi(string(item.Value))
-				fmt.Printf("memcached hit %s = %d\n", memc_key, count)
+				log.Printf("memcached hit %s = %d\n", memc_key, count)
 			} else if err == memcache.ErrCacheMiss {
 				// memcached miss
 				reserve := make([]reservation, 0)
 
-				cursor, err := coll_reserve.Find(ctx, &bson.M{"hotelId": hotelId, "inDate": indate, "outDate": outdate})
+				cursor, err := coll_reserve.Find(ctx, &bson.M{"hotelId": hotelId, "inDate": indateYMD, "outDate": outdateYMD})
 				if err != nil {
-					panic(err)
+					log.Fatalf("failed to read table researve, error is %v", err)
 				}
 				err = cursor.All(ctx, &reserve)
-				if err != nil {
-					panic(err)
+				if len(reserve) > 0 {
+					for _, r := range reserve {
+						fmt.Printf("reservation check reservation number = %s\n", hotelId)
+						count += r.Number
+					}
+					// update memcached
+					s.MemcClient.Set(&memcache.Item{Key: memc_key, Value: []byte(strconv.Itoa(count))})
 				}
-
-				for _, r := range reserve {
-					fmt.Printf("reservation check reservation number = %s\n", hotelId)
-					count += r.Number
-				}
-
-				// update memcached
-				s.MemcClient.Set(&memcache.Item{Key: memc_key, Value: []byte(strconv.Itoa(count))})
 			} else {
-				fmt.Printf("Memmcached error = %s\n", err)
-				panic(err)
+				log.Fatalf("Memmcached error = %s\n", err)
 			}
 
 			// check capacity
@@ -259,14 +248,13 @@ func (s *Server) CheckAvailability(ctx context.Context, req *pb.Request) (*pb.Re
 					s.MemcClient.Set(&memcache.Item{Key: memc_cap_key, Value: []byte(strconv.Itoa(hotel_cap))})
 				}
 			} else {
-				fmt.Printf("Memmcached error = %s\n", err)
-				panic(err)
+				log.Fatalf("Memmcached error = %s\n", err)
 			}
 
 			if count+int(req.RoomNumber) > hotel_cap {
 				break
 			}
-			indate = outdate
+			indateYMD = outdateYMD
 
 			if inDate.Equal(outDate) {
 				res.HotelId = append(res.HotelId, hotelId)
