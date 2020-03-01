@@ -28,7 +28,7 @@ func main() {
 	checkAddr := fmt.Sprintf("http://%s:%s/ping", podIp, regCheckPort)
 
 	reg := new(api.AgentServiceRegistration)
-	reg.ID = serviceName
+	reg.ID = serviceName + "-" + podIp
 	reg.Name = serviceName
 	reg.Port = port
 	reg.Address = podIp
