@@ -14,15 +14,15 @@ import (
 )
 
 func main() {
+	host_ip := os.Getenv("hostIP")
 	serv_ip := os.Getenv("serverIP")
-	jaegerAddr := os.Getenv("jaegerAddr")
-	consulAddr := os.Getenv("consulAddr")
+	serv_port, _ := strconv.Atoi(os.Getenv("serverPort"))
+	jaegerPort := os.Getenv("jaegerPort")
+	consulPort := os.Getenv("consulPort")
 	consul_check_port, _ := strconv.Atoi(os.Getenv("consulCheckPort"))
 
-	serv_port, _ := strconv.Atoi(os.Getenv("serverPort"))
-	fmt.Printf("search ip = %s, port = %d\n", serv_ip, serv_port)
-
-	fmt.Printf("init distributed tracing with addr: %s\n", jaegerAddr)
+	jaegerAddr := host_ip + ":" + jaegerPort
+	log.Printf("init distributed tracing with addr: %s\n", jaegerAddr)
 	tracer, closer, err := tracing.Init("search", jaegerAddr)
 	if err != nil {
 		log.Fatalf("error init Jaeger tracing with err=%v", err)
@@ -30,12 +30,14 @@ func main() {
 	defer closer.Close()
 	opentracing.SetGlobalTracer(tracer)
 
-	fmt.Printf("init consul with addr: %s\n", consulAddr)
+	consulAddr := host_ip + ":" + consulPort
+	log.Printf("init consul with addr: %s\n", consulAddr)
 	registry, err := registry.NewClient(consulAddr)
 	if err != nil {
 		log.Fatalf("error init Consul with err=%v", err)
 	}
 
+	fmt.Printf("search ip = %s, port = %d\n", serv_ip, serv_port)
 	srv := &search.Server{
 		Tracer:       tracer,
 		Port:         serv_port,
