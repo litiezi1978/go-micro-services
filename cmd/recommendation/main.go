@@ -36,7 +36,7 @@ func main() {
 
 	mongoAddr, err := registry.FindService("srv-mongo-recomm")
 	if err != nil {
-		log.Fatalf("failed to search srv-mongo-rate from Consul, %v", err)
+		log.Fatalf("failed to search srv-mongo-recomm from Consul, %v", err)
 	}
 	log.Printf("init mongo DB with addr: %s\n", mongoAddr)
 	mongoClient, err := recommendation.InitializeDatabase(mongoAddr)

@@ -12,15 +12,13 @@ import (
 )
 
 func main() {
+	host_ip := os.Getenv("hostIP")
 	servIp := os.Getenv("serverIP")
-	jaegerAddr := os.Getenv("jaegerAddr")
-	consulAddr := os.Getenv("consulAddr")
+	servPort, _ := strconv.Atoi(os.Getenv("serverPort"))
+	jaegerPort := os.Getenv("jaegerPort")
+	consulPort := os.Getenv("consulPort")
 
-	servPort, err := strconv.Atoi(os.Getenv("serverPort"))
-	if err != nil {
-		log.Fatalf("environment var error, %v", err)
-	}
-
+	jaegerAddr := host_ip + ":" + jaegerPort
 	log.Printf("Init jaeger with %s", jaegerAddr)
 	tracer, closer, err := tracing.Init("frontend", jaegerAddr)
 	if err != nil {
@@ -29,6 +27,7 @@ func main() {
 	defer closer.Close()
 	opentracing.SetGlobalTracer(tracer)
 
+	consulAddr := host_ip + ":" + consulPort
 	log.Printf("init consul with %s", consulAddr)
 	registry, err := registry.NewClient(consulAddr)
 	if err != nil {

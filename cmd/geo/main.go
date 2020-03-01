@@ -33,9 +33,9 @@ func main() {
 	}
 	defer closer.Close()
 
-	mongoAddr, err := registry.FindService("srv-mongo-rate")
+	mongoAddr, err := registry.FindService("srv-mongo-geo")
 	if err != nil {
-		log.Fatalf("failed to search srv-mongo-rate from Consul, %v", err)
+		log.Fatalf("failed to search srv-mongo-geo from Consul, %v", err)
 	}
 	log.Printf("init mongo DB with addr: %s\n", mongoAddr)
 
